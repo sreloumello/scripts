@@ -18,29 +18,19 @@ log = logging.getLogger(__name__)
 # Configuração
 # ──────────────────────────────────────────────
 
-ROLE_NAME = "luan-martins-darede"
+ROLE_NAME = "luan-martins-role"
 
 LOAD_BALANCERS = [
     {
-        "account_id": "069364025006",
+        "account_id": "000000",
         "region": "us-east-1",
-        "name": "auth-validator",
+        "name": "lb-name",
     },
     {
-        "account_id": "139349456372",
-        "region": "us-east-2",
-        "name": "k8s-pcmdev-opendata-de7dcb643b",
-    },
-    {
-        "account_id": "139349456372",
-        "region": "us-east-2",
-        "name": "k8s-pcmdev-reportap-7d38738537",
-    },
-    {
-        "account_id": "139349456372",
-        "region": "us-east-2",
-        "name": "k8s-n8n-n8n-a8e06e2a94",
-    },
+        "account_id": "000000",
+        "region": "us-east-1",
+        "name": "lb-name",
+    }
 ]
 
 # ──────────────────────────────────────────────
