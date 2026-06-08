@@ -4,6 +4,7 @@ Script para deletar Load Balancers sem targets em múltiplas contas AWS.
 Autenticação exclusivamente via Assume Role.
 """
 
+import time
 import boto3
 import logging
 from botocore.exceptions import ClientError
@@ -18,19 +19,14 @@ log = logging.getLogger(__name__)
 # Configuração
 # ──────────────────────────────────────────────
 
-ROLE_NAME = "luan-martins-role"
+ROLE_NAME = "luan-martins-darede"
 
 LOAD_BALANCERS = [
     {
-        "account_id": "000000",
-        "region": "us-east-1",
-        "name": "lb-name",
+        "account_id": "xxxxxxxxxxxxxxx",
+        "region": "us-east-2",
+        "name": "xxxxxxxxxxxxxxxxxxx",
     },
-    {
-        "account_id": "000000",
-        "region": "us-east-1",
-        "name": "lb-name",
-    }
 ]
 
 # ──────────────────────────────────────────────
@@ -98,6 +94,34 @@ def inspect_targets(client, lb_arn: str):
                 log.warning(f"               * {target_id}:{target_port} | status: {health}{reason_str}")
 
 
+def check_vpce_services(session: boto3.Session, lb_arn: str):
+    """Apenas informa se há VPCE Services associados ao LB, sem alterar nada."""
+    ec2 = session.client("ec2")
+    paginator = ec2.get_paginator("describe_vpc_endpoint_service_configurations")
+    all_services = []
+    for page in paginator.paginate():
+        all_services.extend(page.get("ServiceConfigurations", []))
+
+    services = [
+        svc for svc in all_services
+        if lb_arn in svc.get("NetworkLoadBalancerArns", [])
+    ]
+
+    if not services:
+        return False
+
+    for svc in services:
+        svc_id    = svc["ServiceId"]
+        svc_name  = svc["ServiceName"]
+        svc_state = svc["ServiceState"]
+        nlb_arns  = svc.get("NetworkLoadBalancerArns", [])
+        log.warning(f"  VPCE Service associado: {svc_name} ({svc_id}) | estado: {svc_state}")
+        log.warning(f"            -> NLBs conectados: {nlb_arns}")
+        log.warning(f"            -> Delete manualmente o VPCE antes de rodar o script.")
+
+    return True
+
+
 def delete_listeners(client, lb_arn: str):
     resp = client.describe_listeners(LoadBalancerArn=lb_arn)
     for listener in resp.get("Listeners", []):
@@ -106,11 +130,18 @@ def delete_listeners(client, lb_arn: str):
         client.delete_listener(ListenerArn=arn)
 
 
-def delete_load_balancer(client, lb_arn: str, lb_name: str, dry_run: bool):
+def delete_load_balancer(session: boto3.Session, lb_arn: str, lb_name: str, dry_run: bool):
+    client = session.client("elbv2")
+
     if dry_run:
         log.info(f"  [DRY-RUN] Deletaria: {lb_name} ({lb_arn})")
         inspect_targets(client, lb_arn)
+        check_vpce_services(session, lb_arn)
         return
+
+    if check_vpce_services(session, lb_arn):
+        raise RuntimeError(f"LB '{lb_name}' ainda possui VPCE Service associado. Delete manualmente e rode novamente.")
+
     delete_listeners(client, lb_arn)
     log.info(f"  Deletando Load Balancer: {lb_name} ({lb_arn})")
     client.delete_load_balancer(LoadBalancerArn=lb_arn)
@@ -146,7 +177,7 @@ def main(dry_run: bool = True):
                 results["not_found"].append(name)
                 continue
 
-            delete_load_balancer(client, lb_arn, name, dry_run)
+            delete_load_balancer(session, lb_arn, name, dry_run)
             results["success"].append(name)
 
         except Exception as e:
@@ -163,4 +194,4 @@ def main(dry_run: bool = True):
 
 if __name__ == "__main__":
     # mudar para dry_run=False somente quando quiser executar de verdade
-    main(dry_run=True)
+    main(dry_run=False)
